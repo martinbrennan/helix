@@ -10,6 +10,7 @@
 #include "esp_log.h"
 #include "usb/usb_host.h"
 #include <string.h>
+#include "helix.h"
 
 #define CLIENT_NUM_EVENT_MSG        5
 
@@ -22,6 +23,10 @@
 #define ACTION_EXIT                 0x40
 
 #define ACTION_MYTEST               0x80
+
+int testUnitReadyFlag = 0;
+int requestSenseFlag = 0;
+usb_host_client_handle_t publicHandle;
 
 typedef struct {
     usb_host_client_handle_t client_hdl;
@@ -150,10 +155,57 @@ unsigned char inquiryCmd[31] = {
     0x06,                   // byte 14: bit 7-5 Reserved(0), bCBWCBLength
     0x12, 0, 0, 0,          // byte 15-30: CBWCommandBlock
     0x24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    
+unsigned char cBW[31] = {
+    0x55, 0x53, 0x42, 0x43, // byte 0-3: dCBWSignature
+    0,    0,    0,    1,    // byte 4-7: dCBWTag
+    0,    0,    0,    0,    // byte 8-11: dCBWDataTransferLength
+    0x80,                   // byte 12: bmCBWFlags
+    0,                      // byte 13: bit 7-4 Reserved(0), bCBWLUN
+    0x0C,                   // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+    0xBE, 0,    0,    0,    // byte 15-30: CBWCommandBlock
+    0,    0,    0,    0,    0, 0xF0, 0, 0, 0, 0, 0, 0};
+    
+int setupRead() {
+
+  int count = 1;
+  int lba = 75 * 60;
+  int datalength = count * 2352;
+
+  cBW[8] = (datalength & 0xff);
+  cBW[9] = ((datalength >> 8) & 0xff);
+  cBW[10] = ((datalength >> 16) & 0xff);
+  cBW[11] = ((datalength >> 24) & 0xff);
+
+  cBW[20] = (lba & 0xff);
+  cBW[19] = ((lba >> 8) & 0xff);
+  cBW[18] = ((lba >> 16) & 0xff);
+  cBW[17] = ((lba >> 24) & 0xff);
+
+  cBW[23] = (count & 0xff);
+  cBW[22] = ((count >> 8) & 0xff);
+  cBW[21] = ((count >> 16) & 0xff);
+
+  return (datalength + 63) & 0xFFFFFFC0;
+}
+
+unsigned char tocCmd[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                                                    // dCBWSignature
+                            0, 0, 0, 1,             // byte 4-7: dCBWTag
+                            0x24, 3, 0, 0, // byte 8-11: dCBWDataTransferLength
+                            0x80,    // byte 12: bmCBWFlags
+                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
+                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+                            0x43, 2, 0, 0, // byte 15-30: CBWCommandBlock
+                            0, 0, 0, 3, 0x24, 0, 0, 0, 0, 0, 0, 0};
+
+
+	
+
 
 static void transfer_cb2(usb_transfer_t *transfer) {
 
-  printf("MJB Transfer 2 status %d, actual number of bytes transferred %d\n",
+  printf("MJB transfer_cb2 status %d, actual number of bytes transferred %d\n",
          transfer->status, transfer->actual_num_bytes);
 }
 
@@ -165,19 +217,20 @@ static void transfer_cb(usb_transfer_t *transfer) {
   class_driver_t *driver_obj = (class_driver_t  *)transfer->context;
 
   usb_transfer_t *transferR;
-  usb_host_transfer_alloc(1024, 0, &transferR);
+  usb_host_transfer_alloc(4096, 0, &transferR);
   
 //  printf ("transferR = %lx\n",(unsigned long)transferR);
 
   // Perform an IN transfer from EP1
   transferR->num_bytes = 64;
+//  transferR->num_bytes = (2352+63)&0xFFFFFFC0;
   transferR->device_handle = driver_obj->dev_hdl;
   transferR->bEndpointAddress = 0x81;
   transferR->callback = transfer_cb2;
   transferR->context = (void *)driver_obj;
   esp_err_t r = usb_host_transfer_submit(transferR);
 
-  printf("MJB usb_host_transfer_submit () result %s\n", esp_err_to_name(r));  
+  printf("MJB usb_host_transfer_submit 2 () result %s\n", esp_err_to_name(r));  
   
 }  
 
@@ -190,14 +243,21 @@ static void action_mytest(class_driver_t *driver_obj) {
 
   printf("MJB action_mytest()\n");
 
+
   esp_err_t r = usb_host_interface_claim(driver_obj->client_hdl,
                                          driver_obj->dev_hdl, 0, 0);
 
   printf("MJB usb_host_interface_claim() result %s\n", esp_err_to_name(r));
 
+/*
   // Send an OUT transfer to EP2
-   memcpy(transfer->data_buffer,requestSenseCmd, 31);
-//  memcpy(transfer->data_buffer, inquiryCmd, 31);
+  memcpy(transfer->data_buffer,requestSenseCmd, 31);		// gets 18 bytes back
+//  memcpy(transfer->data_buffer, inquiryCmd, 31);		// gets 36 bytes back
+//  memcpy(transfer->data_buffer, tocCmd, 31);		// gets 
+
+//  int l = setupRead();
+//  memcpy(transfer->data_buffer, cBW, 31);
+
   transfer->num_bytes = 31;
   transfer->device_handle = driver_obj->dev_hdl;
   transfer->bEndpointAddress = 0x02;
@@ -206,9 +266,134 @@ static void action_mytest(class_driver_t *driver_obj) {
   r = usb_host_transfer_submit(transfer);
 
   printf("MJB usb_host_transfer_submit () result %s\n", esp_err_to_name(r));
-
+*/
   driver_obj->actions &= ~ACTION_MYTEST;
 }
+
+void requestSense () {
+	printf ("requestSense () handle %lx\n",(unsigned long) publicHandle);
+	requestSenseFlag = 1;
+	usb_host_client_unblock (publicHandle);
+}
+
+void requestSensecb(usb_transfer_t *transfer) {
+
+  printf("MJB requestSensecb Transfer status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+
+  class_driver_t *driver_obj = (class_driver_t  *)transfer->context;
+
+  usb_transfer_t *transferR;
+  usb_host_transfer_alloc(4096, 0, &transferR);
+  
+  printf ("One block rounded up %d\n",(2352+63)&0xFFFFFFC0);
+  
+  // Perform an IN transfer from EP1
+  transferR->num_bytes = 2368;
+  transferR->device_handle = driver_obj->dev_hdl;
+  transferR->bEndpointAddress = 0x81;
+  transferR->callback = transfer_cb2;
+  transferR->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(transferR);
+
+  printf("MJB requestSensecb usb_host_transfer_submit () result %s\n", esp_err_to_name(r));  
+  
+} 
+
+void startRequestSense (class_driver_t *driver_obj) {
+
+	int r;
+  usb_transfer_t *transfer;
+  usb_host_transfer_alloc(1024, 0, &transfer);
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  printf("MJB startRequestSense()\n");
+
+//  memcpy(transfer->data_buffer,requestSenseCmd, 31);
+//  memcpy(transfer->data_buffer,inquiryCmd, 31);
+//  memcpy(transfer->data_buffer,tocCmd, 31);
+	setupRead ();
+  memcpy(transfer->data_buffer,cBW, 31);
+
+  transfer->num_bytes = 31;
+  transfer->device_handle = driver_obj->dev_hdl;
+  transfer->bEndpointAddress = 0x02;
+  transfer->callback = requestSensecb;
+  transfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(transfer);
+
+  printf("MJB startRequestSense usb_host_transfer_submit () result %s\n", esp_err_to_name(r));
+
+
+}
+
+unsigned char readyCmd[31] = {
+    0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                            // dCBWSignature
+    0, 0, 0, 1,             // byte 4-7: dCBWTag
+    0, 0, 0, 0,             // byte 8-11: dCBWDataTransferLength
+    0,                      // byte 12: bmCBWFlags
+    0,                      // byte 13: bit 7-4 Reserved(0), bCBWLUN
+    0x06,                   // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+    0, 0, 0, 0,             // byte 15-30: CBWCommandBlock
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+
+
+
+void testUnitReady () {
+	printf ("testUnitReady () handle %lx\n",(unsigned long) publicHandle);
+	testUnitReadyFlag = 1;
+	usb_host_client_unblock (publicHandle);
+}
+
+void testUnitReadycb(usb_transfer_t *transfer) {
+
+  printf("MJB testUnitReadycb Transfer status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+
+  class_driver_t *driver_obj = (class_driver_t  *)transfer->context;
+
+  usb_transfer_t *transferR;
+  usb_host_transfer_alloc(1024, 0, &transferR);
+  
+  // Perform an IN transfer from EP1
+  transferR->num_bytes = 64;
+  transferR->device_handle = driver_obj->dev_hdl;
+  transferR->bEndpointAddress = 0x81;
+  transferR->callback = transfer_cb2;
+  transferR->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(transferR);
+
+  printf("MJB testUnitReadycb usb_host_transfer_submit () result %s\n", esp_err_to_name(r));  
+  
+} 
+
+void startTestUnitReady (class_driver_t *driver_obj) {
+
+	int r;
+  usb_transfer_t *transfer;
+  usb_host_transfer_alloc(1024, 0, &transfer);
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  printf("MJB startTestUnitReady()\n");
+
+  memcpy(transfer->data_buffer,readyCmd, 31);
+
+  transfer->num_bytes = 31;
+  transfer->device_handle = driver_obj->dev_hdl;
+  transfer->bEndpointAddress = 0x02;
+  transfer->callback = testUnitReadycb;
+  transfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(transfer);
+
+  printf("MJB startTestUnitReady usb_host_transfer_submit () result %s\n", esp_err_to_name(r));
+
+
+}
+
 
 
 static void action_close_dev(class_driver_t *driver_obj)
@@ -221,60 +406,79 @@ static void action_close_dev(class_driver_t *driver_obj)
     driver_obj->actions |= ACTION_EXIT;
 }
 
-void class_driver_task(void *arg)
-{
-    SemaphoreHandle_t signaling_sem = (SemaphoreHandle_t)arg;
-    class_driver_t driver_obj = {0};
 
-    //Wait until daemon task has installed USB Host Library
-    xSemaphoreTake(signaling_sem, portMAX_DELAY);
 
-    ESP_LOGI(TAG, "Registering Client");
-    usb_host_client_config_t client_config = {
-        .is_synchronous = false,    //Synchronous clients currently not supported. Set this to false
-        .max_num_event_msg = CLIENT_NUM_EVENT_MSG,
-        .async = {
-            .client_event_callback = client_event_cb,
-            .callback_arg = (void *)&driver_obj,
-        },
-    };
-    ESP_ERROR_CHECK(usb_host_client_register(&client_config, &driver_obj.client_hdl));
+void class_driver_task(void *arg) {
+  SemaphoreHandle_t signaling_sem = (SemaphoreHandle_t)arg;
+  class_driver_t driver_obj = {0};
 
-    while (1) {
-        if (driver_obj.actions == 0) {
-            usb_host_client_handle_events(driver_obj.client_hdl, portMAX_DELAY);
-        } else {
-            if (driver_obj.actions & ACTION_OPEN_DEV) {
-                action_open_dev(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_GET_DEV_INFO) {
-                action_get_info(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_GET_DEV_DESC) {
-                action_get_dev_desc(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_GET_CONFIG_DESC) {
-                action_get_config_desc(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_GET_STR_DESC) {
-                action_get_str_desc(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_CLOSE_DEV) {
-                action_close_dev(&driver_obj);
-            }
-            if (driver_obj.actions & ACTION_EXIT) {
-                break;
-            }
-            if (driver_obj.actions & ACTION_MYTEST) {
-                action_mytest(&driver_obj);
-            }            
-        }
+  // Wait until daemon task has installed USB Host Library
+  xSemaphoreTake(signaling_sem, portMAX_DELAY);
+
+  ESP_LOGI(TAG, "Registering Client");
+  usb_host_client_config_t client_config = {
+      .is_synchronous = false, // Synchronous clients currently not supported.
+                               // Set this to false
+      .max_num_event_msg = CLIENT_NUM_EVENT_MSG,
+      .async =
+          {
+              .client_event_callback = client_event_cb,
+              .callback_arg = (void *)&driver_obj,
+          },
+  };
+  ESP_ERROR_CHECK(
+      usb_host_client_register(&client_config, &driver_obj.client_hdl));
+
+  publicHandle = driver_obj.client_hdl;
+
+  while (1) {
+    if (testUnitReadyFlag) {
+      printf("got testUnitReadyFlag\n");
+      testUnitReadyFlag = 0;
+      startTestUnitReady (&driver_obj);      
+    }
+    if (requestSenseFlag) {
+      printf("got requestSenseFlag\n");
+      requestSenseFlag = 0;
+      startRequestSense (&driver_obj);      
     }
 
-    ESP_LOGI(TAG, "Deregistering Client");
-    ESP_ERROR_CHECK(usb_host_client_deregister(driver_obj.client_hdl));
 
-    //Wait to be deleted
-    xSemaphoreGive(signaling_sem);
-    vTaskSuspend(NULL);
+
+    if (driver_obj.actions == 0) {
+      usb_host_client_handle_events(driver_obj.client_hdl, portMAX_DELAY);
+    } else {
+      if (driver_obj.actions & ACTION_OPEN_DEV) {
+        action_open_dev(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_GET_DEV_INFO) {
+        action_get_info(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_GET_DEV_DESC) {
+        action_get_dev_desc(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_GET_CONFIG_DESC) {
+        action_get_config_desc(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_GET_STR_DESC) {
+        action_get_str_desc(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_CLOSE_DEV) {
+        action_close_dev(&driver_obj);
+      }
+      if (driver_obj.actions & ACTION_EXIT) {
+        break;
+      }
+      if (driver_obj.actions & ACTION_MYTEST) {
+        action_mytest(&driver_obj);
+      }
+    }
+  }
+
+  ESP_LOGI(TAG, "Deregistering Client");
+  ESP_ERROR_CHECK(usb_host_client_deregister(driver_obj.client_hdl));
+
+  // Wait to be deleted
+  xSemaphoreGive(signaling_sem);
+  vTaskSuspend(NULL);
 }

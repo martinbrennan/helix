@@ -11,6 +11,8 @@
 #include "esp_intr_alloc.h"
 #include "usb/usb_host.h"
 #include "driver/gpio.h"
+#include <string.h>
+#include "helix.h"
 
 void hostSel() {
   // zero-initialize the config structure.
@@ -114,6 +116,29 @@ static void host_lib_daemon_task(void *arg)
     vTaskSuspend(NULL);
 }
 
+static void myTask(void *arg)
+{
+	char lbuf[100];
+	int lblen = 0;
+	while (1){
+		int c = fgetc (stdin);
+		if (c >= 0) {
+			if (c == 0xA) {
+				lbuf[lblen] = 0;
+				lblen = 0;
+				if (strcasecmp(lbuf,"ready") == 0) testUnitReady ();
+				else if (strcasecmp(lbuf,"sense") == 0) requestSense ();
+			}
+			else if (lblen < 99){
+				printf ("%c",c);
+				lbuf[lblen++] = c;
+			}		
+		}	
+		vTaskDelay (10);
+	}	
+}
+
+
 void app_main(void)
 {
 	
@@ -125,6 +150,7 @@ void app_main(void)
 
     TaskHandle_t daemon_task_hdl;
     TaskHandle_t class_driver_task_hdl;
+    TaskHandle_t my_task_hdl;
     //Create daemon task
     xTaskCreatePinnedToCore(host_lib_daemon_task,
                             "daemon",
@@ -142,7 +168,17 @@ void app_main(void)
                             &class_driver_task_hdl,
                             0);
 
+    xTaskCreatePinnedToCore(myTask,
+                            "myTask",
+                            4096,
+                            NULL,
+                            2,
+                            &my_task_hdl,
+                            0);
+
     vTaskDelay(10);     //Add a short delay to let the tasks run
+
+		
 
     //Wait for the tasks to complete
     for (int i = 0; i < 2; i++) {
