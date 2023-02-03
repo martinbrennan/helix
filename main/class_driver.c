@@ -201,16 +201,39 @@ unsigned char tocCmd[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
                             0x43, 2, 0, 0, // byte 15-30: CBWCommandBlock
                             0, 0, 0, 3, 0x24, 0, 0, 0, 0, 0, 0, 0};
 
-static void transfer_cb2(usb_transfer_t *transfer) {
+void cdump (unsigned char *buf, int len){
+	
+	int n = 1;
+	while (len--){
+		printf ("%02x ",*buf++);
+		if (!(n++ % 8)) printf ("\n");
+	}
+	if ((n - 1) % 8) printf ("\n");	
+}		
 
-  printf("MJB transfer_cb2 status %d, actual number of bytes transferred %d\n",
+static void testUnitReadycb2(usb_transfer_t *transfer) {
+/*
+  printf("testUnitReadycb2 status %d, actual number of bytes transferred %d\n",
          transfer->status, transfer->actual_num_bytes);
+         
+  cdump ((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);
+*/
+	unsigned char *r = (unsigned char *)transfer->data_buffer;
+	if (r[12]) printf ("Test Unit Ready Failed\n");
+	else printf ("Test Unit Ready OK\n");
 
+}
+
+void transfer_cb2(usb_transfer_t *transfer) {
+
+  printf("transfer_cb2 status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+         
 }
 
 static void transfer_cb3(usb_transfer_t *transfer) {
 
-  printf("MJB transfer_cb2 %d status %d, actual number of bytes transferred %d\n",
+  printf("MJB transfer_cb3 %d status %d, actual number of bytes transferred %d\n",
          blocks, transfer->status, transfer->actual_num_bytes);
   if (blocks) {
     blocks--;
@@ -218,7 +241,7 @@ static void transfer_cb3(usb_transfer_t *transfer) {
   }
 }
 
-static void transfer_cb(usb_transfer_t *transfer) {
+void transfer_cb(usb_transfer_t *transfer) {
 
   printf("MJB Transfer status %d, actual number of bytes transferred %d\n",
          transfer->status, transfer->actual_num_bytes);
@@ -350,17 +373,18 @@ unsigned char readyCmd[31] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 void testUnitReady() {
-  printf("testUnitReady () handle %lx\n", (unsigned long)publicHandle);
+  printf("testUnitReady ()\n");
   testUnitReadyFlag = 1;
   usb_host_client_unblock(publicHandle);
 }
 
 void testUnitReadycb(usb_transfer_t *transfer) {
 
+/*
   printf("MJB testUnitReadycb Transfer status %d, actual number of bytes "
          "transferred %d\n",
          transfer->status, transfer->actual_num_bytes);
-
+*/
   class_driver_t *driver_obj = (class_driver_t *)transfer->context;
 
   usb_transfer_t *transferR;
@@ -370,12 +394,11 @@ void testUnitReadycb(usb_transfer_t *transfer) {
   transferR->num_bytes = 64;
   transferR->device_handle = driver_obj->dev_hdl;
   transferR->bEndpointAddress = 0x81;
-  transferR->callback = transfer_cb2;
+  transferR->callback = testUnitReadycb2;
   transferR->context = (void *)driver_obj;
   esp_err_t r = usb_host_transfer_submit(transferR);
 
-  printf("MJB testUnitReadycb usb_host_transfer_submit () result %s\n",
-         esp_err_to_name(r));
+	if (r != ESP_OK) printf ("startTestUnitReadycb submit error %s\n",esp_err_to_name(r));
 }
 
 void startTestUnitReady(class_driver_t *driver_obj) {
@@ -386,8 +409,6 @@ void startTestUnitReady(class_driver_t *driver_obj) {
 
   assert(driver_obj->dev_hdl != NULL);
 
-  printf("MJB startTestUnitReady()\n");
-
   memcpy(transfer->data_buffer, readyCmd, 31);
 
   transfer->num_bytes = 31;
@@ -397,8 +418,8 @@ void startTestUnitReady(class_driver_t *driver_obj) {
   transfer->context = (void *)driver_obj;
   r = usb_host_transfer_submit(transfer);
 
-  printf("MJB startTestUnitReady usb_host_transfer_submit () result %s\n",
-         esp_err_to_name(r));
+	if (r != ESP_OK) printf ("startTestUnitReady submit error %s\n",esp_err_to_name(r));
+
 }
 
 static void action_close_dev(class_driver_t *driver_obj) {
@@ -436,12 +457,10 @@ void class_driver_task(void *arg) {
 
   while (1) {
     if (testUnitReadyFlag) {
-      printf("got testUnitReadyFlag\n");
       testUnitReadyFlag = 0;
       startTestUnitReady(&driver_obj);
     }
     if (requestSenseFlag) {
-      printf("got requestSenseFlag\n");
       requestSenseFlag = 0;
       startRequestSense(&driver_obj);
     }
