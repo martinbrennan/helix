@@ -236,11 +236,16 @@ void transfer_cb2(usb_transfer_t *transfer) {
 
 static void transfer_cb3(usb_transfer_t *transfer) {
 
-  printf("MJB transfer_cb3 %d status %d, actual number of bytes transferred %d\n",
-         blocks, transfer->status, transfer->actual_num_bytes);
+  /*
+    printf("transfer_cb3 %d bytes from lba %d\n", transfer->actual_num_bytes,
+           lba);
+    cdump((unsigned char *)transfer->data_buffer, 8);
+  */
   if (blocks) {
     blocks--;
     requestSenseFlag = 1;
+  } else {
+    printf("All done\n");
   }
 }
 
@@ -312,56 +317,59 @@ void requestSense() {
   usb_host_client_unblock(publicHandle);
 }
 
-void requestSensecb(usb_transfer_t *transfer) {
+void readBlocks (int sector, int count){
+	lba = sector;
+	blocks = count;
+  requestSenseFlag = 1;
+  usb_host_client_unblock(publicHandle);	
+}
 
+void requestSensecb(usb_transfer_t *transfer) {
+/*
   printf("MJB requestSensecb Transfer status %d, actual number of bytes "
          "transferred %d\n",
          transfer->status, transfer->actual_num_bytes);
-
+*/
   class_driver_t *driver_obj = (class_driver_t *)transfer->context;
 
-  usb_transfer_t *transferR;
-  usb_host_transfer_alloc(10240, 0, &transferR);
-
-  printf("One block rounded up %d\n", (2352 + 63) & 0xFFFFFFC0);
+//  printf("One block rounded up %d\n", (2352 + 63) & 0xFFFFFFC0);	// 2368
 
   // Perform an IN transfer from EP1
-  transferR->num_bytes = 2368 * 4;
-  transferR->device_handle = driver_obj->dev_hdl;
-  transferR->bEndpointAddress = 0x81;
-  transferR->callback = transfer_cb3;
-  transferR->context = (void *)driver_obj;
-  esp_err_t r = usb_host_transfer_submit(transferR);
+  dataTransfer->num_bytes = 2368 * 4;
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = transfer_cb3;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
 
-  printf("MJB requestSensecb usb_host_transfer_submit () result %s\n",
-         esp_err_to_name(r));
+  if (r != ESP_OK)
+    printf("startRequestSensecb submit error %s\n", esp_err_to_name(r));
+
 }
 
 void startRequestSense(class_driver_t *driver_obj) {
 
   int r;
-  usb_transfer_t *transfer;
-  usb_host_transfer_alloc(1024, 0, &transfer);
 
   assert(driver_obj->dev_hdl != NULL);
 
-  printf("MJB startRequestSense()\n");
+//  printf("startRequestSense()\n");
 
   //  memcpy(transfer->data_buffer,requestSenseCmd, 31);
   //  memcpy(transfer->data_buffer,inquiryCmd, 31);
   //  memcpy(transfer->data_buffer,tocCmd, 31);
   setupRead();
-  memcpy(transfer->data_buffer, cBW, 31);
+  memcpy(commandTransfer->data_buffer, cBW, 31);
 
-  transfer->num_bytes = 31;
-  transfer->device_handle = driver_obj->dev_hdl;
-  transfer->bEndpointAddress = 0x02;
-  transfer->callback = requestSensecb;
-  transfer->context = (void *)driver_obj;
-  r = usb_host_transfer_submit(transfer);
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = requestSensecb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
 
-  printf("MJB startRequestSense usb_host_transfer_submit () result %s\n",
-         esp_err_to_name(r));
+  if (r != ESP_OK)
+    printf("startRequestSense submit error %s\n", esp_err_to_name(r));
 }
 
 unsigned char readyCmd[31] = {

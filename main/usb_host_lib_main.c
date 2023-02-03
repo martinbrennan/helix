@@ -128,6 +128,7 @@ static void myTask(void *arg)
 				lblen = 0;
 				if (strcasecmp(lbuf,"ready") == 0) testUnitReady ();
 				else if (strcasecmp(lbuf,"sense") == 0) requestSense ();
+				else if (strcasecmp(lbuf,"read") == 0) readBlocks (100000+75 * 60,1000);
 			}
 			else if (lblen < 99){
 				printf ("%c",c);
