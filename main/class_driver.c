@@ -28,6 +28,9 @@ int testUnitReadyFlag = 0;
 int requestSenseFlag = 0;
 usb_host_client_handle_t publicHandle;
 
+usb_transfer_t *commandTransfer;
+usb_transfer_t *dataTransfer;
+
 typedef struct {
   usb_host_client_handle_t client_hdl;
   uint8_t dev_addr;
@@ -380,46 +383,37 @@ void testUnitReady() {
 
 void testUnitReadycb(usb_transfer_t *transfer) {
 
-/*
-  printf("MJB testUnitReadycb Transfer status %d, actual number of bytes "
-         "transferred %d\n",
-         transfer->status, transfer->actual_num_bytes);
-*/
   class_driver_t *driver_obj = (class_driver_t *)transfer->context;
 
-  usb_transfer_t *transferR;
-  usb_host_transfer_alloc(1024, 0, &transferR);
-
   // Perform an IN transfer from EP1
-  transferR->num_bytes = 64;
-  transferR->device_handle = driver_obj->dev_hdl;
-  transferR->bEndpointAddress = 0x81;
-  transferR->callback = testUnitReadycb2;
-  transferR->context = (void *)driver_obj;
-  esp_err_t r = usb_host_transfer_submit(transferR);
+  dataTransfer->num_bytes = 64;
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = testUnitReadycb2;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
 
-	if (r != ESP_OK) printf ("startTestUnitReadycb submit error %s\n",esp_err_to_name(r));
+  if (r != ESP_OK)
+    printf("startTestUnitReadycb submit error %s\n", esp_err_to_name(r));
 }
 
 void startTestUnitReady(class_driver_t *driver_obj) {
 
   int r;
-  usb_transfer_t *transfer;
-  usb_host_transfer_alloc(1024, 0, &transfer);
 
   assert(driver_obj->dev_hdl != NULL);
 
-  memcpy(transfer->data_buffer, readyCmd, 31);
+  memcpy(commandTransfer->data_buffer, readyCmd, 31);
 
-  transfer->num_bytes = 31;
-  transfer->device_handle = driver_obj->dev_hdl;
-  transfer->bEndpointAddress = 0x02;
-  transfer->callback = testUnitReadycb;
-  transfer->context = (void *)driver_obj;
-  r = usb_host_transfer_submit(transfer);
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = testUnitReadycb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
 
-	if (r != ESP_OK) printf ("startTestUnitReady submit error %s\n",esp_err_to_name(r));
-
+  if (r != ESP_OK)
+    printf("startTestUnitReady submit error %s\n", esp_err_to_name(r));
 }
 
 static void action_close_dev(class_driver_t *driver_obj) {
@@ -454,6 +448,9 @@ void class_driver_task(void *arg) {
       usb_host_client_register(&client_config, &driver_obj.client_hdl));
 
   publicHandle = driver_obj.client_hdl;
+  
+  usb_host_transfer_alloc(1024, 0, &commandTransfer);  
+  usb_host_transfer_alloc(10240, 0, &dataTransfer);   
 
   while (1) {
     if (testUnitReadyFlag) {
