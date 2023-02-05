@@ -33,6 +33,8 @@ usb_host_client_handle_t publicHandle;
 usb_transfer_t *commandTransfer;
 usb_transfer_t *dataTransfer;
 
+#define BLOCKSIZE 8
+
 typedef struct {
   usb_host_client_handle_t client_hdl;
   uint8_t dev_addr;
@@ -174,7 +176,7 @@ int blocks = 10;
 
 int setupRead() {
 
-  int count = 4;
+  int count = BLOCKSIZE;
   int datalength = count * 2352;
 
   cBW[8] = (datalength & 0xff);
@@ -191,7 +193,7 @@ int setupRead() {
   cBW[22] = ((count >> 8) & 0xff);
   cBW[21] = ((count >> 16) & 0xff);
 
-  lba += 4;
+  lba += count;
 
   return (datalength + 63) & 0xFFFFFFC0;
 }
@@ -256,20 +258,7 @@ void transfer_cb2(usb_transfer_t *transfer) {
          
 }
 
-static void readcb2 (usb_transfer_t *transfer) {
 
-
-    printf("readcb2 %d bytes from lba %d\n", transfer->actual_num_bytes,
-           lba);
-//    cdump((unsigned char *)transfer->data_buffer, 8);
-
-  if (blocks) {
-    blocks--;
-    readFlag = 1;
-  } else {
-    printf("All done\n");
-  }
-}
 
 void transfer_cb(usb_transfer_t *transfer) {
 
@@ -349,6 +338,45 @@ void readToc (int sector, int count){
   usb_host_client_unblock(publicHandle);	
 }
 
+
+void readcb3 (usb_transfer_t *transfer) {
+
+if (transfer->actual_num_bytes != 13){
+    printf("readb3 %d bytes\n", transfer->actual_num_bytes);
+    cdump((unsigned char *)transfer->data_buffer, 8);  
+}
+    
+  if (blocks) {
+    blocks--;
+    readFlag = 1;
+  } else {
+    printf("All done\n");    
+  }  
+}
+
+static void readcb2 (usb_transfer_t *transfer) {
+
+
+    printf("readcb2 %d bytes from lba %d\n", transfer->actual_num_bytes,lba);
+//    cdump((unsigned char *)transfer->data_buffer, 8);
+
+// get status
+
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+    
+  dataTransfer->num_bytes = 64;			// rounded up
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = readcb3;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("readcb2 submit error %s\n", esp_err_to_name(r)); 
+
+}
+
+
 void readcb(usb_transfer_t *transfer) {
 /*
   printf("MJB requestSensecb Transfer status %d, actual number of bytes "
@@ -359,9 +387,9 @@ void readcb(usb_transfer_t *transfer) {
 
 //  printf("One block rounded up %d\n", (2352 + 63) & 0xFFFFFFC0);	// 2368
 
-  // Perform an IN transfer from EP1
-  dataTransfer->num_bytes = 2368 * 4;		// stricty this is 2352*4 + 13 rounded up to 64
-											// so it fetches the data and 13 bytes of status
+
+  dataTransfer->num_bytes = 2352*BLOCKSIZE;		// 
+  											
   dataTransfer->device_handle = driver_obj->dev_hdl;
   dataTransfer->bEndpointAddress = 0x81;
   dataTransfer->callback = readcb2;
@@ -602,7 +630,7 @@ void class_driver_task(void *arg) {
   publicHandle = driver_obj.client_hdl;
   
   usb_host_transfer_alloc(1024, 0, &commandTransfer);  
-  usb_host_transfer_alloc(10240, 0, &dataTransfer);   
+  usb_host_transfer_alloc(20480, 0, &dataTransfer);   
 
   while (1) {
     if (testUnitReadyFlag) {
