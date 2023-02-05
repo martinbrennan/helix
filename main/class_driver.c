@@ -25,6 +25,8 @@
 #define ACTION_MYTEST 0x80
 
 int testUnitReadyFlag = 0;
+int readFlag = 0;
+int readTocFlag = 0;
 int requestSenseFlag = 0;
 usb_host_client_handle_t publicHandle;
 
@@ -204,6 +206,26 @@ unsigned char tocCmd[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
                             0x43, 2, 0, 0, // byte 15-30: CBWCommandBlock
                             0, 0, 0, 3, 0x24, 0, 0, 0, 0, 0, 0, 0};
 
+unsigned char tocCmd2[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                                                    // dCBWSignature
+                            0xBF, 0x1F, 0, 0,             // byte 4-7: dCBWTag
+                            0xC, 0, 0, 0, // byte 8-11: dCBWDataTransferLength
+                            0x80,          // byte 12: bmCBWFlags
+                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
+                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+                            0x43, 0, 0, 0, // byte 15-30: CBWCommandBlock
+                            0, 0, 0, 0, 0xc, 0, 0, 0, 0, 0, 0, 0};
+
+unsigned char tocCmd3[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                                                    // dCBWSignature
+                            0xBF, 0x1F, 0, 0,             // byte 4-7: dCBWTag
+                            0x18, 0, 0, 0, // byte 8-11: dCBWDataTransferLength
+                            0x80,          // byte 12: bmCBWFlags
+                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
+                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+                            0x43, 0, 0, 0, // byte 15-30: CBWCommandBlock
+                            0, 0, 0, 0, 0x18, 0, 0, 0, 0, 0, 0, 0};
+
 void cdump (unsigned char *buf, int len){
 	
 	int n = 1;
@@ -234,16 +256,16 @@ void transfer_cb2(usb_transfer_t *transfer) {
          
 }
 
-static void transfer_cb3(usb_transfer_t *transfer) {
+static void readcb2 (usb_transfer_t *transfer) {
 
-  /*
-    printf("transfer_cb3 %d bytes from lba %d\n", transfer->actual_num_bytes,
+
+    printf("readcb2 %d bytes from lba %d\n", transfer->actual_num_bytes,
            lba);
-    cdump((unsigned char *)transfer->data_buffer, 8);
-  */
+//    cdump((unsigned char *)transfer->data_buffer, 8);
+
   if (blocks) {
     blocks--;
-    requestSenseFlag = 1;
+    readFlag = 1;
   } else {
     printf("All done\n");
   }
@@ -273,6 +295,8 @@ void transfer_cb(usb_transfer_t *transfer) {
   printf("MJB usb_host_transfer_submit 2 () result %s\n", esp_err_to_name(r));
 }
 
+// WARNING not a test - a necessary part of initiialisation
+
 static void action_mytest(class_driver_t *driver_obj) {
 
   usb_transfer_t *transfer;
@@ -294,17 +318,14 @@ static void action_mytest(class_driver_t *driver_obj) {
   //  memcpy(transfer->data_buffer, inquiryCmd, 31);		// gets 36 bytes
   back
   //  memcpy(transfer->data_buffer, tocCmd, 31);		// gets
-
   //  int l = setupRead();
   //  memcpy(transfer->data_buffer, cBW, 31);
-
     transfer->num_bytes = 31;
     transfer->device_handle = driver_obj->dev_hdl;
     transfer->bEndpointAddress = 0x02;
     transfer->callback = transfer_cb;
     transfer->context = (void *)driver_obj;
     r = usb_host_transfer_submit(transfer);
-
     printf("MJB usb_host_transfer_submit () result %s\n", esp_err_to_name(r));
   */
   driver_obj->actions &= ~ACTION_MYTEST;
@@ -312,7 +333,6 @@ static void action_mytest(class_driver_t *driver_obj) {
 
 void requestSense() {
   printf("requestSense () handle %lx\n", (unsigned long)publicHandle);
-  blocks = 10;
   requestSenseFlag = 1;
   usb_host_client_unblock(publicHandle);
 }
@@ -320,11 +340,16 @@ void requestSense() {
 void readBlocks (int sector, int count){
 	lba = sector;
 	blocks = count;
-  requestSenseFlag = 1;
+  readFlag = 1;
   usb_host_client_unblock(publicHandle);	
 }
 
-void requestSensecb(usb_transfer_t *transfer) {
+void readToc (int sector, int count){
+  readTocFlag = 1;
+  usb_host_client_unblock(publicHandle);	
+}
+
+void readcb(usb_transfer_t *transfer) {
 /*
   printf("MJB requestSensecb Transfer status %d, actual number of bytes "
          "transferred %d\n",
@@ -335,42 +360,115 @@ void requestSensecb(usb_transfer_t *transfer) {
 //  printf("One block rounded up %d\n", (2352 + 63) & 0xFFFFFFC0);	// 2368
 
   // Perform an IN transfer from EP1
-  dataTransfer->num_bytes = 2368 * 4;
+  dataTransfer->num_bytes = 2368 * 4;		// stricty this is 2352*4 + 13 rounded up to 64
+											// so it fetches the data and 13 bytes of status
   dataTransfer->device_handle = driver_obj->dev_hdl;
   dataTransfer->bEndpointAddress = 0x81;
-  dataTransfer->callback = transfer_cb3;
+  dataTransfer->callback = readcb2;
   dataTransfer->context = (void *)driver_obj;
   esp_err_t r = usb_host_transfer_submit(dataTransfer);
 
   if (r != ESP_OK)
-    printf("startRequestSensecb submit error %s\n", esp_err_to_name(r));
+    printf("readcb submit error %s\n", esp_err_to_name(r));
 
 }
 
-void startRequestSense(class_driver_t *driver_obj) {
+void startRead(class_driver_t *driver_obj) {
 
   int r;
 
   assert(driver_obj->dev_hdl != NULL);
 
-//  printf("startRequestSense()\n");
+//  printf("startRead()\n");
 
-  //  memcpy(transfer->data_buffer,requestSenseCmd, 31);
-  //  memcpy(transfer->data_buffer,inquiryCmd, 31);
-  //  memcpy(transfer->data_buffer,tocCmd, 31);
   setupRead();
   memcpy(commandTransfer->data_buffer, cBW, 31);
 
   commandTransfer->num_bytes = 31;
   commandTransfer->device_handle = driver_obj->dev_hdl;
   commandTransfer->bEndpointAddress = 0x02;
-  commandTransfer->callback = requestSensecb;
+  commandTransfer->callback = readcb;
   commandTransfer->context = (void *)driver_obj;
   r = usb_host_transfer_submit(commandTransfer);
 
   if (r != ESP_OK)
-    printf("startRequestSense submit error %s\n", esp_err_to_name(r));
+    printf("startRead submit error %s\n", esp_err_to_name(r));
 }
+
+
+static void readToccb3 (usb_transfer_t *transfer) {
+
+    printf("readToccb3 %d bytes\n", transfer->actual_num_bytes);
+    cdump((unsigned char *)transfer->data_buffer, 8);  
+}
+
+static void readToccb2 (usb_transfer_t *transfer) {
+
+    printf("readToccb2 %d bytes\n", transfer->actual_num_bytes);
+    cdump((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);  
+
+    
+// get status
+
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+    
+  dataTransfer->num_bytes = 64;			// rounded up
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = readToccb3;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("readToccb2 submit error %s\n", esp_err_to_name(r));    
+    
+}
+
+void readToccb(usb_transfer_t *transfer) {
+/*
+  printf("readToccb Transfer status %d, actual number of bytes "
+         "transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+*/
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+
+//  dataTransfer->num_bytes = 804;
+//  dataTransfer->num_bytes = 832;			// rounded up
+  dataTransfer->num_bytes = 64;			// rounded up
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = readToccb2;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("readToccb submit error %s\n", esp_err_to_name(r));
+
+}
+
+
+void startReadToc (class_driver_t *driver_obj) {
+
+  int r;
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  printf("startReadToc ()\n");
+
+//	memcpy(commandTransfer->data_buffer,tocCmd, 31);
+	memcpy(commandTransfer->data_buffer,tocCmd3, 31);
+
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = readToccb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
+
+  if (r != ESP_OK)
+    printf("startReadToc submit error %s\n", esp_err_to_name(r));
+}
+
 
 unsigned char readyCmd[31] = {
     0x55, 0x53, 0x42, 0x43, // byte 0-3:
@@ -424,6 +522,52 @@ void startTestUnitReady(class_driver_t *driver_obj) {
     printf("startTestUnitReady submit error %s\n", esp_err_to_name(r));
 }
 
+static void requestSensecb2(usb_transfer_t *transfer) {
+
+  printf("requestSensecb2 status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+         
+  cdump ((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);
+
+}
+
+void requestSensecb(usb_transfer_t *transfer) {
+
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+
+  // Perform an IN transfer from EP1
+  dataTransfer->num_bytes = 64;
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = requestSensecb2;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("requestSensecb submit error %s\n", esp_err_to_name(r));
+}
+
+void startRequestSense(class_driver_t *driver_obj) {
+
+  int r;
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  memcpy(commandTransfer->data_buffer, requestSenseCmd, 31);
+
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = requestSensecb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
+
+  if (r != ESP_OK)
+    printf("startTestUnitReady submit error %s\n", esp_err_to_name(r));
+}
+
+
+
 static void action_close_dev(class_driver_t *driver_obj) {
   ESP_ERROR_CHECK(
       usb_host_device_close(driver_obj->client_hdl, driver_obj->dev_hdl));
@@ -465,8 +609,16 @@ void class_driver_task(void *arg) {
       testUnitReadyFlag = 0;
       startTestUnitReady(&driver_obj);
     }
+    if (readFlag) {
+      readFlag = 0;
+      startRead(&driver_obj);
+    }
+    if (readTocFlag) {
+     readTocFlag = 0;
+      startReadToc(&driver_obj);
+    }
     if (requestSenseFlag) {
-      requestSenseFlag = 0;
+     requestSenseFlag = 0;
       startRequestSense(&driver_obj);
     }
 
