@@ -180,7 +180,7 @@ void app_main(void)
 
     vTaskDelay(10);     //Add a short delay to let the tasks run
 
-		
+	lcdInit ();	
 
     //Wait for the tasks to complete
     for (int i = 0; i < 2; i++) {

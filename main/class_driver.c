@@ -33,7 +33,7 @@ usb_host_client_handle_t publicHandle;
 usb_transfer_t *commandTransfer;
 usb_transfer_t *dataTransfer;
 
-#define BLOCKSIZE 8
+#define BLOCKSIZE 16
 
 typedef struct {
   usb_host_client_handle_t client_hdl;
@@ -630,7 +630,8 @@ void class_driver_task(void *arg) {
   publicHandle = driver_obj.client_hdl;
   
   usb_host_transfer_alloc(1024, 0, &commandTransfer);  
-  usb_host_transfer_alloc(20480, 0, &dataTransfer);   
+//  usb_host_transfer_alloc(20480, 0, &dataTransfer);   
+  usb_host_transfer_alloc(2352*BLOCKSIZE, 0, &dataTransfer); 
 
   while (1) {
     if (testUnitReadyFlag) {
