@@ -90,14 +90,15 @@ void lcdInit() {
     myRect = heap_caps_malloc(40 * 40 * sizeof(uint16_t), MALLOC_CAP_DMA);    
 
 	int n;
-	for (n=0;n<(40*40);n++) myRect[n] = 0xF800;		// mustard
+//	for (n=0;n<(40*40);n++) myRect[n] = 0xF800;		// red
+	for (n=0;n<(40*40);n++) myRect[n] = 0x001F;		// 
 //	for (n=0;n<(40*40);n++) myRect[n] = 0x00F8;
 //	for (n=0;n<(40*40);n++) myRect[n] = 0x8000;		// white ish
 //	for (n=0;n<(40*40);n++) myRect[n] = 0x4000;		// white ish
 //	for (n=0;n<(40*40);n++) myRect[n] = 0x0000;		// white ish
 //	for (n=0;n<(40*40);n++) myRect[n] = 0xFFFF;		// white ish
 	
-    esp_lcd_panel_draw_bitmap(panel_handle, 0, 0, 40, 40, myRect);	
+    esp_lcd_panel_draw_bitmap(panel_handle, 40, 40, 80, 80, myRect);	
 
 
   

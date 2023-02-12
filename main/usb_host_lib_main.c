@@ -14,6 +14,8 @@
 #include <string.h>
 #include "helix.h"
 
+#include "lvgl.h"
+
 void hostSel() {
   // zero-initialize the config structure.
   gpio_config_t io_conf = {};
@@ -180,7 +182,8 @@ void app_main(void)
 
     vTaskDelay(10);     //Add a short delay to let the tasks run
 
-	lcdInit ();	
+	lcdInit ();
+	lv_init ();	
 
     //Wait for the tasks to complete
     for (int i = 0; i < 2; i++) {
