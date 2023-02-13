@@ -14,7 +14,7 @@
 #include <string.h>
 #include "helix.h"
 
-#include "lvgl.h"
+
 
 void hostSel() {
   // zero-initialize the config structure.
@@ -182,8 +182,7 @@ void app_main(void)
 
     vTaskDelay(10);     //Add a short delay to let the tasks run
 
-	lcdInit ();
-	lv_init ();	
+	lcdInit ();	
 
     //Wait for the tasks to complete
     for (int i = 0; i < 2; i++) {
