@@ -7,11 +7,14 @@
 #include "esp_lcd_panel_vendor.h"
 #include <stdio.h>
 
+#include "esp_timer.h"
+
 #include "helix.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lvgl.h"
 
-#define MY_DISP_HOR_RES 320
 
 #define LCD_HOST SPI2_HOST
 #define LCDHEIGHT 240
@@ -27,11 +30,24 @@ esp_lcd_panel_handle_t panel_handle = NULL;
 
 void my_flush_cb(lv_disp_drv_t *disp_drv, const lv_area_t *area,
                  lv_color_t *color_p) {
-  esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1, area->x2,
+
+  printf("flush %d %d %d %d\n", area->x1, area->y1, area->x2, area->y2);
+
+  esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1+1, area->x2+1,
                             area->y2, color_p);
+
+  vTaskDelay(10); // Add a short delay
 
   lv_disp_flush_ready(disp_drv);
 }
+
+static void onTimer(void *arg) {
+	
+	lv_tick_inc(5);
+	lv_timer_handler();
+}	
+
+
 
 void lcdInit() {
 
@@ -118,12 +134,12 @@ void lcdInit() {
   static lv_disp_draw_buf_t disp_buf;
 
   /*Static or global buffer(s). The second buffer is optional*/
-  static lv_color_t buf_1[MY_DISP_HOR_RES * 10];
-  static lv_color_t buf_2[MY_DISP_HOR_RES * 10];
+  static lv_color_t buf_1[LCDWIDTH * 10];
+  static lv_color_t buf_2[LCDWIDTH * 10];
 
   /*Initialize `disp_buf` with the buffer(s). With only one buffer use NULL
    * instead buf_2 */
-  lv_disp_draw_buf_init(&disp_buf, buf_1, buf_2, MY_DISP_HOR_RES * 10);
+  lv_disp_draw_buf_init(&disp_buf, buf_1, buf_2, LCDWIDTH * 10);
 
   static lv_disp_drv_t
       disp_drv; /*A variable to hold the drivers. Must be static or global.*/
@@ -131,10 +147,36 @@ void lcdInit() {
   disp_drv.draw_buf = &disp_buf; /*Set an initialized buffer*/
   disp_drv.flush_cb =
       my_flush_cb;        /*Set a flush callback to draw to the display*/
-  disp_drv.hor_res = 320; /*Set the horizontal resolution in pixels*/
-  disp_drv.ver_res = 240; /*Set the vertical resolution in pixels*/
+  disp_drv.hor_res = LCDWIDTH; /*Set the horizontal resolution in pixels*/
+  disp_drv.ver_res = LCDHEIGHT; /*Set the vertical resolution in pixels*/
 
   lv_disp_t *disp;
   disp = lv_disp_drv_register(
       &disp_drv); /*Register the driver and save the created display objects*/
+      
+  const esp_timer_create_args_t periodic_timer_args = {
+      //            .callback = &periodic_timer_callback,
+      .callback = &onTimer,
+      /* name is optional, but may help identify the timer when debugging */
+      .name = "lvgl timer"};
+
+  esp_timer_handle_t periodic_timer;
+  ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, &periodic_timer));
+  /* The timer has been created but is not running yet */
+
+  /* Start the timers */
+  ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 5000)); 
+  
+//  lv_obj_t * screen = lv_scr_act();
+       
+
+    lv_obj_t * btn1 = lv_btn_create(lv_scr_act());
+        lv_obj_align(btn1, LV_ALIGN_CENTER, 0, -40);
+
+    lv_obj_t * label;
+
+    label = lv_label_create(btn1);
+    lv_label_set_text(label, "Button");
+    lv_obj_center(label);
+      
 }
