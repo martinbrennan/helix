@@ -31,12 +31,10 @@ esp_lcd_panel_handle_t panel_handle = NULL;
 void my_flush_cb(lv_disp_drv_t *disp_drv, const lv_area_t *area,
                  lv_color_t *color_p) {
 
-  printf("flush %d %d %d %d\n", area->x1, area->y1, area->x2, area->y2);
+//  printf("flush %d %d %d %d\n", area->x1, area->y1, area->x2, area->y2);
 
-  esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1+1, area->x2+1,
-                            area->y2, color_p);
-
-  vTaskDelay(10); // Add a short delay
+  esp_lcd_panel_draw_bitmap(panel_handle, area->x1, area->y1, area->x2+1,
+                            area->y2+1, color_p);
 
   lv_disp_flush_ready(disp_drv);
 }
@@ -104,29 +102,29 @@ void lcdInit() {
 
   // Initialize LCD panel
   ESP_ERROR_CHECK(esp_lcd_panel_init(panel_handle));
+  
+  // Mirror X
+  ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel_handle,false,false));   
 
   // Turn on the screen
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel_handle, true));
 
   // Swap x and y axis (Different LCD screens may need different options)
-  ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, true));
+  ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel_handle, false));
 
   // Turn on backlight (Different LCD screens may need different levels)
   ESP_ERROR_CHECK(gpio_set_level(9, LCD_BK_LIGHT_ON_LEVEL));
 
   myRect = heap_caps_malloc(40 * 40 * sizeof(uint16_t), MALLOC_CAP_DMA);
-
+  
+  
   int n;
-  //	for (n=0;n<(40*40);n++) myRect[n] = 0xF800;		// red
-  for (n = 0; n < (40 * 40); n++)
-    myRect[n] = 0x001F; //
-                        //	for (n=0;n<(40*40);n++) myRect[n] = 0x00F8;
-  //	for (n=0;n<(40*40);n++) myRect[n] = 0x8000;		// white ish
-  //	for (n=0;n<(40*40);n++) myRect[n] = 0x4000;		// white ish
-  //	for (n=0;n<(40*40);n++) myRect[n] = 0x0000;		// white ish
-  //	for (n=0;n<(40*40);n++) myRect[n] = 0xFFFF;		// white ish
 
-  esp_lcd_panel_draw_bitmap(panel_handle, 40, 40, 80, 80, myRect);
+  for (n = 0; n < (40 * 40); n++) myRect[n] = 0x0;
+  for (n = 0; n < 240; n++){
+  esp_lcd_panel_draw_bitmap(panel_handle, n, 0, n+1, 240, myRect);  
+	}
+  
 
   lv_init();
 
@@ -168,6 +166,11 @@ void lcdInit() {
   ESP_ERROR_CHECK(esp_timer_start_periodic(periodic_timer, 5000)); 
   
 //  lv_obj_t * screen = lv_scr_act();
+
+	lv_color_t grey = lv_color_make (0x80, 0x80, 0x80);
+	lv_color_t black = lv_color_make (0x0, 0x00, 0x0);
+       
+    lv_obj_set_style_bg_color (lv_scr_act(), black, LV_STATE_DEFAULT);   
        
 
     lv_obj_t * btn1 = lv_btn_create(lv_scr_act());
