@@ -182,6 +182,9 @@ void app_main(void)
 
     vTaskDelay(10);     //Add a short delay to let the tasks run
 
+	audioInit();
+	startAudioThread();	
+
 	lcdInit ();	
 
     //Wait for the tasks to complete

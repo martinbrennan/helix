@@ -1,4 +1,7 @@
 
+#define THREADSTACKSIZE 4096
+
+
 // class_driver.c
 
 void testUnitReady ();
@@ -11,3 +14,7 @@ void readToc ();
 
 void lcdInit ();
 
+// audio.c
+
+void audioInit(void);
+void startAudioThread();
