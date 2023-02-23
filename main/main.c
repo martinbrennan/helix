@@ -126,12 +126,20 @@ static void myTask(void *arg)
 		int c = fgetc (stdin);
 		if (c >= 0) {
 			if (c == 0xA) {
+				printf ("\n");
 				lbuf[lblen] = 0;
 				lblen = 0;
 				if (strcasecmp(lbuf,"ready") == 0) testUnitReady ();
 				else if (strcasecmp(lbuf,"sense") == 0) requestSense ();
 				else if (strcasecmp(lbuf,"read") == 0) readBlocks (100000+75 * 60,1000);
 				else if (strcasecmp(lbuf,"toc") == 0) readToc ();
+				else if (strcasecmp(lbuf,"check") == 0) {
+
+					testUnitReady ();
+					int r = testUnitReady ();
+					
+					printf ("check result %d\n",r);
+				}
 			}
 			else if (lblen < 99){
 				printf ("%c",c);

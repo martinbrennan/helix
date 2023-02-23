@@ -12,6 +12,34 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <pthread.h>
+#include <time.h>
+
+pthread_mutex_t commandMutex;
+pthread_cond_t commandCond;
+
+// returns nz on timeout
+
+int waitForCommand (int seconds){
+
+	int r;
+	struct timespec wait_time;
+	clock_gettime (CLOCK_REALTIME, &wait_time);
+	wait_time.tv_sec += seconds;
+	
+	pthread_mutex_lock (&commandMutex);
+	r = pthread_cond_timedwait (&commandCond, &commandMutex, &wait_time);
+	pthread_mutex_unlock (&commandMutex);
+	if (r) printf ("waitForCommand Timeout\n");	
+	return r;	
+}	
+
+void commandDone (){
+	pthread_mutex_lock (&commandMutex);
+	pthread_cond_signal (&commandCond);
+	pthread_mutex_unlock (&commandMutex);	
+}
+
 #define CLIENT_NUM_EVENT_MSG 5
 
 #define ACTION_OPEN_DEV 0x01
@@ -238,6 +266,8 @@ void cdump (unsigned char *buf, int len){
 	if ((n - 1) % 8) printf ("\n");	
 }		
 
+int testUnitReadyResult = 0;
+
 static void testUnitReadycb2(usb_transfer_t *transfer) {
 /*
   printf("testUnitReadycb2 status %d, actual number of bytes transferred %d\n",
@@ -246,8 +276,13 @@ static void testUnitReadycb2(usb_transfer_t *transfer) {
   cdump ((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);
 */
 	unsigned char *r = (unsigned char *)transfer->data_buffer;
+
 	if (r[12]) printf ("Test Unit Ready Failed\n");
 	else printf ("Test Unit Ready OK\n");
+
+	testUnitReadyResult = !r[12];
+	
+	commandDone ();
 
 }
 
@@ -509,10 +544,12 @@ unsigned char readyCmd[31] = {
     0, 0, 0, 0,             // byte 15-30: CBWCommandBlock
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-void testUnitReady() {
-  printf("testUnitReady ()\n");
+int testUnitReady() {
+//  printf("testUnitReady ()\n");
   testUnitReadyFlag = 1;
   usb_host_client_unblock(publicHandle);
+  waitForCommand (5);
+  return testUnitReadyResult;  
 }
 
 void testUnitReadycb(usb_transfer_t *transfer) {
@@ -607,6 +644,12 @@ static void action_close_dev(class_driver_t *driver_obj) {
 }
 
 void class_driver_task(void *arg) {
+	
+// initialise command wait mechanism
+
+	pthread_mutex_init (&commandMutex,NULL);
+	pthread_cond_init (&commandCond,NULL);
+	
   SemaphoreHandle_t signaling_sem = (SemaphoreHandle_t)arg;
   class_driver_t driver_obj = {0};
 
