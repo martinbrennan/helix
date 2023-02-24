@@ -148,8 +148,10 @@ void lcdInit() {
   disp_drv.hor_res = LCDWIDTH; /*Set the horizontal resolution in pixels*/
   disp_drv.ver_res = LCDHEIGHT; /*Set the vertical resolution in pixels*/
 
-  lv_disp_t *disp;
-  disp = lv_disp_drv_register(
+//  lv_disp_t *disp;
+//  disp = 
+  
+  lv_disp_drv_register(
       &disp_drv); /*Register the driver and save the created display objects*/
       
   const esp_timer_create_args_t periodic_timer_args = {
@@ -167,7 +169,7 @@ void lcdInit() {
   
 //  lv_obj_t * screen = lv_scr_act();
 
-	lv_color_t grey = lv_color_make (0x80, 0x80, 0x80);
+//	lv_color_t grey = lv_color_make (0x80, 0x80, 0x80);
 	lv_color_t black = lv_color_make (0x0, 0x00, 0x0);
        
     lv_obj_set_style_bg_color (lv_scr_act(), black, LV_STATE_DEFAULT);   

@@ -13,8 +13,10 @@ typedef uint8_t u8;
 int testUnitReady ();
 void requestSense ();
 void readBlocks (int sector, int count);
-void readToc ();
+int readToc (int track, int count);
 int waitForCommand (int seconds);
+int getTrackStart (int track);
+int getTrackCount ();
 
 // lcd.c
 

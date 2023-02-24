@@ -58,6 +58,19 @@ int readTocFlag = 0;
 int requestSenseFlag = 0;
 usb_host_client_handle_t publicHandle;
 
+int tocTrack = 0;
+int tocCount = 1;
+int trackCount = 0;
+int trackStart[100];
+
+int getTrackStart (int track){
+	return trackStart[track];
+}
+
+int getTrackCount (){
+	return trackCount;
+}		
+
 usb_transfer_t *commandTransfer;
 usb_transfer_t *dataTransfer;
 
@@ -226,35 +239,11 @@ int setupRead() {
   return (datalength + 63) & 0xFFFFFFC0;
 }
 
-unsigned char tocCmd[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
-                                                    // dCBWSignature
-                            0, 0, 0, 1,             // byte 4-7: dCBWTag
-                            0x24, 3, 0, 0, // byte 8-11: dCBWDataTransferLength
-                            0x80,          // byte 12: bmCBWFlags
-                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
-                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
-                            0x43, 2, 0, 0, // byte 15-30: CBWCommandBlock
-                            0, 0, 0, 3, 0x24, 0, 0, 0, 0, 0, 0, 0};
 
-unsigned char tocCmd2[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
-                                                    // dCBWSignature
-                            0xBF, 0x1F, 0, 0,             // byte 4-7: dCBWTag
-                            0xC, 0, 0, 0, // byte 8-11: dCBWDataTransferLength
-                            0x80,          // byte 12: bmCBWFlags
-                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
-                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
-                            0x43, 0, 0, 0, // byte 15-30: CBWCommandBlock
-                            0, 0, 0, 0, 0xc, 0, 0, 0, 0, 0, 0, 0};
 
-unsigned char tocCmd3[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
-                                                    // dCBWSignature
-                            0xBF, 0x1F, 0, 0,             // byte 4-7: dCBWTag
-                            0x18, 0, 0, 0, // byte 8-11: dCBWDataTransferLength
-                            0x80,          // byte 12: bmCBWFlags
-                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
-                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
-                            0x43, 0, 0, 0, // byte 15-30: CBWCommandBlock
-                            0, 0, 0, 0, 0x18, 0, 0, 0, 0, 0, 0, 0};
+
+
+
 
 void cdump (unsigned char *buf, int len){
 	
@@ -368,9 +357,13 @@ void readBlocks (int sector, int count){
   usb_host_client_unblock(publicHandle);	
 }
 
-void readToc (int sector, int count){
+int readToc (int track, int count){
+	tocTrack = track;
+	tocCount = count;
   readTocFlag = 1;
-  usb_host_client_unblock(publicHandle);	
+  usb_host_client_unblock(publicHandle);
+  waitForCommand (5);
+  return trackCount;   	
 }
 
 
@@ -461,15 +454,32 @@ void startRead(class_driver_t *driver_obj) {
 
 static void readToccb3 (usb_transfer_t *transfer) {
 
-    printf("readToccb3 %d bytes\n", transfer->actual_num_bytes);
-    cdump((unsigned char *)transfer->data_buffer, 8);  
+//    printf("readToccb3 %d bytes\n", transfer->actual_num_bytes);
+//    cdump((unsigned char *)transfer->data_buffer, 8);
+	commandDone ();
 }
+
+// WARNING when a command goes wrong it sends 20 bytes status here
+// at that point I should not request the status
 
 static void readToccb2 (usb_transfer_t *transfer) {
 
-    printf("readToccb2 %d bytes\n", transfer->actual_num_bytes);
-    cdump((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);  
+//    printf("readToccb2 %d bytes\n", transfer->actual_num_bytes);
+//    cdump((unsigned char *)transfer->data_buffer,transfer->actual_num_bytes);  
 
+	unsigned char *d = transfer->data_buffer;
+	trackCount = d[3];
+    
+		int track;
+		for (track = 0;track < tocCount;track++){
+			int i = (track << 3) + 4;
+			int lba = d[i+7];
+			lba += d[i+6]<<8;
+			lba += d[i+5]<<16;
+			lba += d[i+4]<<24;
+//			printf ("got lba %x\n",lba);
+			trackStart[track] = lba;
+		}	
     
 // get status
 
@@ -497,7 +507,13 @@ void readToccb(usb_transfer_t *transfer) {
 
 //  dataTransfer->num_bytes = 804;
 //  dataTransfer->num_bytes = 832;			// rounded up
-  dataTransfer->num_bytes = 64;			// rounded up
+
+  int byteCount = tocCount * 8 + 4;
+  byteCount += 63;						// round up
+  byteCount |= 0x3F;
+  byteCount ^= 0x3F;
+
+  dataTransfer->num_bytes = byteCount;			// rounded up
   dataTransfer->device_handle = driver_obj->dev_hdl;
   dataTransfer->bEndpointAddress = 0x81;
   dataTransfer->callback = readToccb2;
@@ -509,6 +525,17 @@ void readToccb(usb_transfer_t *transfer) {
 
 }
 
+unsigned char tocCmd[31] = {0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                                                    // dCBWSignature
+                            0, 0, 0, 1,             // byte 4-7: dCBWTag
+                            0x24, 3, 0, 0, // byte 8-11: dCBWDataTransferLength
+                            0x80,          // byte 12: bmCBWFlags
+                            0,    // byte 13: bit 7-4 Reserved(0), bCBWLUN
+                            0x0A, // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+                            0x43, 0, 0, 0, // byte 15-30: CBWCommandBlock
+											// bit 1 of byte 16 is MSF flag
+                            0, 0, 0, 3, 0x24, 0, 0, 0, 0, 0, 0, 0};
+
 
 void startReadToc (class_driver_t *driver_obj) {
 
@@ -516,10 +543,22 @@ void startReadToc (class_driver_t *driver_obj) {
 
   assert(driver_obj->dev_hdl != NULL);
 
-  printf("startReadToc ()\n");
+//  printf("startReadToc ()\n");
 
-//	memcpy(commandTransfer->data_buffer,tocCmd, 31);
-	memcpy(commandTransfer->data_buffer,tocCmd3, 31);
+	int datalength = tocCount * 8 + 4;
+
+  tocCmd[8] = (datalength & 0xff);
+  tocCmd[9] = ((datalength >> 8) & 0xff);
+  tocCmd[10] = ((datalength >> 16) & 0xff);
+  tocCmd[11] = ((datalength >> 24) & 0xff);
+
+  tocCmd[23] = (datalength & 0xff);
+  tocCmd[22] = ((datalength >> 8) & 0xff);
+
+  tocCmd[21] = tocTrack;
+
+	memcpy(commandTransfer->data_buffer,tocCmd, 31);
+//	memcpy(commandTransfer->data_buffer,tocCmd3, 31);
 
   commandTransfer->num_bytes = 31;
   commandTransfer->device_handle = driver_obj->dev_hdl;

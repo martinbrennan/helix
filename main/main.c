@@ -132,12 +132,15 @@ static void myTask(void *arg)
 				if (strcasecmp(lbuf,"ready") == 0) testUnitReady ();
 				else if (strcasecmp(lbuf,"sense") == 0) requestSense ();
 				else if (strcasecmp(lbuf,"read") == 0) readBlocks (100000+75 * 60,1000);
-				else if (strcasecmp(lbuf,"toc") == 0) readToc ();
+				else if (strcasecmp(lbuf,"toc") == 0) {
+					int t = readToc (0,1);
+					t = readToc (0,t+1);
+					printf ("readToc result %d\n",t);
+					printf ("Disk length result %d\n",getTrackStart(t));					
+				}	
 				else if (strcasecmp(lbuf,"check") == 0) {
-
 					testUnitReady ();
-					int r = testUnitReady ();
-					
+					int r = testUnitReady ();					
 					printf ("check result %d\n",r);
 				}
 			}
