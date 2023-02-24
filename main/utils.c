@@ -7,6 +7,8 @@ int mymin (int a, int b){
 	return a < b ? a : b;
 }
 
+
+
 // The smart buffer utilities are from play.c in the B2 project
 
 void clearSmartBuffer (smartControl *sc){

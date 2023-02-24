@@ -14,10 +14,17 @@
 
 #include "helix.h"
 
+smartControl *cdAudioBuffer;
+
+int playCDEnable = 0;
+
 //i2s_chan_handle_t rx_handle;
 i2s_chan_handle_t tx_handle;
 
 void audioInit(void) {
+
+	if (!cdAudioBuffer)
+		cdAudioBuffer = createSmartBuffer (50000);
 
   int rate = 44100;
 
@@ -109,10 +116,19 @@ void *audioThreadCode(void *param) {
 
   while (true) {
 
+    int n;
     size_t len;
 
 //    i2s_channel_read(rx_handle, audioBuffer, AUDIOBUFFERSIZE, &len, 100 / portTICK_PERIOD_MS);
-    i2s_channel_write(tx_handle, audioBuffer, AUDIOBUFFERSIZE*2, &len, 100 / portTICK_PERIOD_MS);
+
+	n = smartGetSamplesS (cdAudioBuffer, AUDIOBUFFERSIZE/2, audioBuffer);
+	if (!n) bzero (audioBuffer,AUDIOBUFFERSIZE*2);
+
+	int count = AUDIOBUFFERSIZE*2;
+	while (count){
+		i2s_channel_write(tx_handle, audioBuffer, AUDIOBUFFERSIZE*2, &len, 100 / portTICK_PERIOD_MS);
+		count -= len;
+	}	
 
 
   }
@@ -126,4 +142,44 @@ void startAudioThread() {
 
   pthread_create(&audioThread, &attr, &audioThreadCode, 0);
 }
+
+pthread_t cdThread;
+
+int playCDSector;
+
+void *cdThreadCode(void *param) {
+
+	s16 *data;
+	while (1){
+		if (playCDEnable){
+			readBlocks (playCDSector,1);
+			playCDSector += BLOCKSIZE;
+			data = (s16 *) getDataAddress ();
+			smartPutSamplesW (cdAudioBuffer, (2352*BLOCKSIZE)/4, data);
+		}
+		else delay (1000);
+	}	
+
+}
+
+void startCDThread() {
+
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, THREADSTACKSIZE);
+
+  pthread_create(&cdThread, &attr, &cdThreadCode, 0);
+}
+
+
+
+void startPlayingCD (int lba){
+	playCDSector = lba;
+	playCDEnable = 1;	
+}	
+
+void stopPlayingCD (){
+	playCDEnable = 0;
+}	
+
 

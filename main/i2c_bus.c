@@ -29,6 +29,11 @@
 // MJB #include "audio_mutex.h"
 // MJB #include "audio_mem.h"
 
+
+void delay (int ms){
+  vTaskDelay(ms / portTICK_PERIOD_MS);	
+}
+
 #define ESP_INTR_FLG_DEFAULT  (0)
 #define ESP_I2C_MASTER_BUF_LEN  (0)
 #define I2C_ACK_CHECK_EN 1

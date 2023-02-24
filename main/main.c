@@ -131,7 +131,10 @@ static void myTask(void *arg)
 				lblen = 0;
 				if (strcasecmp(lbuf,"ready") == 0) testUnitReady ();
 				else if (strcasecmp(lbuf,"sense") == 0) requestSense ();
-				else if (strcasecmp(lbuf,"read") == 0) readBlocks (100000+75 * 60,1000);
+				else if (strcasecmp(lbuf,"read") == 0) {
+//					readBlocks (100000+75 * 60,1000);
+					readBlocks (getTrackStart(0),1);
+				}	
 				else if (strcasecmp(lbuf,"toc") == 0) {
 					int t = readToc (0,1);
 					t = readToc (0,t+1);
@@ -143,6 +146,14 @@ static void myTask(void *arg)
 					int r = testUnitReady ();					
 					printf ("check result %d\n",r);
 				}
+				else if (strcasecmp(lbuf,"play") == 0) {					
+					printf ("startPlayingCD ()\n");
+					startPlayingCD (getTrackStart(1));					
+				}
+				else if (strcasecmp(lbuf,"stop") == 0) {					
+					printf ("stopPlayingCD\n");
+					stopPlayingCD ();
+				}
 			}
 			else if (lblen < 99){
 				printf ("%c",c);
@@ -152,6 +163,7 @@ static void myTask(void *arg)
 		vTaskDelay (10);
 	}	
 }
+
 
 
 void app_main(void)
@@ -194,7 +206,8 @@ void app_main(void)
     vTaskDelay(10);     //Add a short delay to let the tasks run
 
 	audioInit();
-	startAudioThread();	
+	startAudioThread();
+	startCDThread();
 
 	lcdInit ();	
 

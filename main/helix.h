@@ -10,6 +10,10 @@ typedef uint8_t u8;
 
 // class_driver.c
 
+// so that CD Read is a multiple of 64
+
+#define BLOCKSIZE 4
+
 int testUnitReady ();
 void requestSense ();
 void readBlocks (int sector, int count);
@@ -17,6 +21,7 @@ int readToc (int track, int count);
 int waitForCommand (int seconds);
 int getTrackStart (int track);
 int getTrackCount ();
+unsigned char *getDataAddress ();
 
 // lcd.c
 
@@ -26,6 +31,9 @@ void lcdInit ();
 
 void audioInit(void);
 void startAudioThread();
+void startCDThread();
+void startPlayingCD (int lba);
+void stopPlayingCD ();
 
 // utils.c
 
@@ -46,3 +54,9 @@ typedef struct {
 } smartControl;
 
 smartControl * createSmartBuffer (long size);
+int smartGetSamplesS (smartControl *sc, int frames, s16 *dest);
+void smartPutSamplesW (smartControl *sc, int frames, s16 *source);
+
+// i2c_bus.c
+
+void delay (int ms);

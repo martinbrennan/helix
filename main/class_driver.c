@@ -73,8 +73,9 @@ int getTrackCount (){
 
 usb_transfer_t *commandTransfer;
 usb_transfer_t *dataTransfer;
+usb_transfer_t *statusTransfer;
 
-#define BLOCKSIZE 16
+
 
 typedef struct {
   usb_host_client_handle_t client_hdl;
@@ -354,7 +355,8 @@ void readBlocks (int sector, int count){
 	lba = sector;
 	blocks = count;
   readFlag = 1;
-  usb_host_client_unblock(publicHandle);	
+  usb_host_client_unblock(publicHandle);
+  waitForCommand (5);	
 }
 
 int readToc (int track, int count){
@@ -373,15 +375,19 @@ if (transfer->actual_num_bytes != 13){
     printf("readb3 %d bytes\n", transfer->actual_num_bytes);
     cdump((unsigned char *)transfer->data_buffer, 8);  
 }
-    
+  blocks--;  
   if (blocks) {
-    blocks--;
     readFlag = 1;
   } else {
     printf("All done\n");    
+    commandDone ();
   }  
 }
 
+unsigned char *getDataAddress (){
+	return (unsigned char *) dataTransfer->data_buffer;
+}
+	
 static void readcb2 (usb_transfer_t *transfer) {
 
 
@@ -392,12 +398,12 @@ static void readcb2 (usb_transfer_t *transfer) {
 
   class_driver_t *driver_obj = (class_driver_t *)transfer->context;
     
-  dataTransfer->num_bytes = 64;			// rounded up
-  dataTransfer->device_handle = driver_obj->dev_hdl;
-  dataTransfer->bEndpointAddress = 0x81;
-  dataTransfer->callback = readcb3;
-  dataTransfer->context = (void *)driver_obj;
-  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+  statusTransfer->num_bytes = 64;			// rounded up
+  statusTransfer->device_handle = driver_obj->dev_hdl;
+  statusTransfer->bEndpointAddress = 0x81;
+  statusTransfer->callback = readcb3;
+  statusTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(statusTransfer);
 
   if (r != ESP_OK)
     printf("readcb2 submit error %s\n", esp_err_to_name(r)); 
@@ -714,6 +720,7 @@ void class_driver_task(void *arg) {
   usb_host_transfer_alloc(1024, 0, &commandTransfer);  
 //  usb_host_transfer_alloc(20480, 0, &dataTransfer);   
   usb_host_transfer_alloc(2352*BLOCKSIZE, 0, &dataTransfer); 
+  usb_host_transfer_alloc(64, 0, &statusTransfer); 
 
   while (1) {
     if (testUnitReadyFlag) {
