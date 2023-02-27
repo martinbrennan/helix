@@ -11,6 +11,7 @@
 #include <string.h>
 
 #include "es8388.h"
+#include "math.h"
 
 #include "helix.h"
 
@@ -32,11 +33,11 @@ void audioInit(void) {
   es8388_init(rate);
   //  printf("es8388_init done\n");
 
+/*
   int initialGain = 10;
-
   es8388_set_adc_gain(initialGain);
-  //  printf("Initial gain set to %d\n", initialGain);
- 
+  printf("Initial gain set to %d\n", initialGain);
+*/ 
 
   /******************* This is the new v5.0 I2S system */  
   
@@ -101,6 +102,21 @@ pthread_t audioThread;
 
 #define AUDIOBUFFERSIZE 2048
 int16_t audioBuffer[AUDIOBUFFERSIZE];
+#define PI              (3.14159265)
+
+void testWaveform (){
+
+	double sin_float;
+	int amplitude = 8000;
+	int16_t *s = audioBuffer;	
+	for (int n=0;n<AUDIOBUFFERSIZE/2;n++){
+        sin_float = amplitude * sin(n * 2 * PI / (AUDIOBUFFERSIZE/2));
+        int val = sin_float;
+		*s++ = val&0xFFFF;
+		*s++ = 0;
+	}
+}		
+
 
 void *audioThreadCode(void *param) {
 
@@ -122,12 +138,18 @@ void *audioThreadCode(void *param) {
 //    i2s_channel_read(rx_handle, audioBuffer, AUDIOBUFFERSIZE, &len, 100 / portTICK_PERIOD_MS);
 
 	n = smartGetSamplesS (cdAudioBuffer, AUDIOBUFFERSIZE/2, audioBuffer);
-	if (!n) bzero (audioBuffer,AUDIOBUFFERSIZE*2);
+	if (!n) {
+		bzero (audioBuffer,AUDIOBUFFERSIZE*2);
+//		testWaveform ();
+	
+	}
 
 	int count = AUDIOBUFFERSIZE*2;
+	s = audioBuffer;
 	while (count){
-		i2s_channel_write(tx_handle, audioBuffer, AUDIOBUFFERSIZE*2, &len, 100 / portTICK_PERIOD_MS);
+		i2s_channel_write(tx_handle, s, count, &len, 100 / portTICK_PERIOD_MS);
 		count -= len;
+		s += len/2;
 	}	
 
 
