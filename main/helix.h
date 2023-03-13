@@ -22,6 +22,8 @@ int waitForCommand (int seconds);
 int getTrackStart (int track);
 int getTrackCount ();
 unsigned char *getDataAddress ();
+int eject ();
+int load ();
 
 // lcd.c
 

@@ -22,6 +22,120 @@ int playCDEnable = 0;
 //i2s_chan_handle_t rx_handle;
 i2s_chan_handle_t tx_handle;
 
+
+// base addresses p131 S3 Technical Reference Manual
+
+#define I2S0BASE 0x6000F000
+#define I2S1BASE 0x6002D000
+#define GPIOBASE 0x60004000
+#define IOMUXBASE 0x60009000
+#define mI2S_RX_CONF_REG 0x20
+#define mI2S_RX_CONF1_REG 0x28
+#define mI2S_TX_CONF1_REG 0x2c
+#define mI2S_RX_CLKM_CONF_REG 0x30
+#define mI2S_TX_CLKM_CONF_REG 0x34
+#define mI2S_RX_CLKM_DIV_CONF_REG 0x38
+#define mI2S_TX_CLKM_DIV_CONF_REG 0x3C
+
+#define mGPIO_ENABLE_REG 0x20
+#define mGPIO_W1TS_REG 0x24
+#define mGPIO_ENABLE_W1TS_REG 0x24
+
+uint32_t readReg(uint32_t base, uint32_t offset) {
+  uint32_t r = *(volatile uint32_t *)(base + offset);
+  return r;
+}
+
+void writeReg(uint32_t base, uint32_t offset, uint32_t value) {
+  volatile uint32_t *a = (volatile uint32_t *)(base + offset);
+  *a = value;
+}
+
+// table of peripherals p206 S3 Technical Reference Manual
+
+void setPeripheralOutput(unsigned peripheral, unsigned gpio) {
+  uint32_t ai = (GPIOBASE + 0x0554 + (4 * gpio));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  *a = peripheral + 0x400;
+}
+
+uint32_t readPeripheralOutput(unsigned gpio) {
+  uint32_t ai = (GPIOBASE + 0x0554 + (4 * gpio));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  return *a;
+}
+
+void setPeripheralInput(unsigned peripheral, unsigned gpio) {
+  uint32_t ai = (GPIOBASE + 0x0154 + (4 * peripheral));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  *a = gpio + 0x80;
+}
+
+uint32_t readPeripheralInput(unsigned peripheral) {
+  uint32_t ai = (GPIOBASE + 0x0154 + (4 * peripheral));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  return *a;
+}
+
+uint32_t readIOMux(unsigned gpio) {
+  uint32_t ai = (IOMUXBASE + 0x0010 + (4 * gpio));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  return *a;
+}
+
+void setIOMux(unsigned gpio, uint32_t value) {
+  uint32_t ai = (IOMUXBASE + 0x0010 + (4 * gpio));
+  volatile uint32_t *a = (volatile uint32_t *)ai;
+  *a = value;
+}
+
+void i2sUpdate() {
+  uint32_t v = readReg(I2S0BASE, mI2S_RX_CONF_REG);
+  v = v | 0x100;
+  writeReg(I2S0BASE, mI2S_RX_CONF_REG, v);
+
+  v = readReg(I2S1BASE, mI2S_RX_CONF_REG);
+  v = v | 0x100;
+  writeReg(I2S1BASE, mI2S_RX_CONF_REG, v);
+}
+
+// This function sets up the I2S clock to use the external 22MHz crystal
+
+void setupDivider (int rate){
+  writeReg(IOMUXBASE, 0, 0xFF00); // PIN_CTRL / IO_MUX_PIB_CTRL_REG p 236
+
+  setPeripheralInput(23, 20); // I2S0_MCLK_In from GPIO20 - page 207 TRM
+
+  writeReg(I2S0BASE, mI2S_RX_CLKM_DIV_CONF_REG,0x0); // turn off fractional (1/N+b/a) divider
+
+  i2sUpdate();
+  
+  int divider;
+  if (rate == 44100) divider = 2;
+  else divider = 4;
+  
+  uint32_t v;
+
+  v = readReg(I2S0BASE, mI2S_RX_CLKM_CONF_REG);
+  v = v & 0xE7FFFFFF; // set I2S0_RX_CLK_SEL to MCLK_in
+  v |= 0x18000000;
+  v = v & 0xFFFFFF00; // set I2S0_RX_CLKM_DIV_NUM to 2
+  v |= divider;
+  writeReg(I2S0BASE, mI2S_RX_CLKM_CONF_REG, v);
+
+  i2sUpdate();
+
+  gpio_set_direction(20, GPIO_MODE_INPUT);
+
+  writeReg(GPIOBASE, 0x28,
+           0x100000); // GPIO_ENABLE_W1TC -clear enable on GPIO20
+  writeReg(GPIOBASE, 0x554 + 4 * 20, 0x500);
+
+  gpio_set_direction(20, GPIO_MODE_INPUT);	
+}	
+
+
+
 void audioInit(void) {
 
 	if (!cdAudioBuffer)
@@ -75,17 +189,19 @@ i2s_channel_init_std_mode(tx_handle, &std_cfg);
 /* Before read data, start the tx channel first */
 i2s_channel_enable(tx_handle);  
   
- #if 0   
+  
   
   vTaskDelay(1000 / portTICK_PERIOD_MS);
 
   //************************** Use external crystal
 
-#if 0
+#if 1
 	setupDivider (rate);
 #endif
 
   //****************************
+
+ #if 1 
 
   // Disable CLK_OUT2 from RXD pin
 
@@ -120,32 +236,40 @@ void testWaveform (){
 	}
 }		
 
+void constWaveform (){
 
-void *audioThreadCode(void *param) {
+	int16_t *s = audioBuffer;	
+	for (int n=0;n<AUDIOBUFFERSIZE/2;n++){
+        *s++ = 0;
+		*s++ = 0x4000;
+//		*s++ = 0;
+	}
+}
+
+
+//void *audioThreadCode(void *param) {
+void audioThreadCode(void *param) {
 
 	int n;
 	int16_t *s = audioBuffer;
-	int16_t v = 0;
 	
-	for (n=0;n<AUDIOBUFFERSIZE;n++){
-		*s++ = v;
-		v += 1;
-	}	
-
+	testWaveform ();
+//		bzero (audioBuffer,AUDIOBUFFERSIZE*2);
+//	constWaveform ();
 
   while (true) {
 
     int n;
     size_t len;
 
-//    i2s_channel_read(rx_handle, audioBuffer, AUDIOBUFFERSIZE, &len, 100 / portTICK_PERIOD_MS);
+
 
 	n = smartGetSamplesS (cdAudioBuffer, AUDIOBUFFERSIZE/2, audioBuffer);
 	if (!n) {
 //		bzero (audioBuffer,AUDIOBUFFERSIZE*2);
 		testWaveform ();
-	
 	}
+	
 
 	int count = AUDIOBUFFERSIZE*2;
 	s = audioBuffer;
@@ -158,7 +282,7 @@ void *audioThreadCode(void *param) {
 
   }
 }
-
+/*
 void startAudioThread() {
 
   pthread_attr_t attr;
@@ -167,6 +291,13 @@ void startAudioThread() {
 
   pthread_create(&audioThread, &attr, &audioThreadCode, 0);
 }
+*/
+
+void startAudioThread() {
+
+	xTaskCreate (&audioThreadCode, "audioThread", THREADSTACKSIZE, NULL, 7, NULL);
+}
+
 
 pthread_t cdThread;
 

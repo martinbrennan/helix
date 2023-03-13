@@ -55,6 +55,8 @@ void commandDone (){
 int testUnitReadyFlag = 0;
 int readFlag = 0;
 int readTocFlag = 0;
+int ejectFlag = 0;
+int loadFlag = 0;
 int requestSenseFlag = 0;
 usb_host_client_handle_t publicHandle;
 
@@ -577,6 +579,134 @@ void startReadToc (class_driver_t *driver_obj) {
     printf("startReadToc submit error %s\n", esp_err_to_name(r));
 }
 
+static void ejectCb2(usb_transfer_t *transfer) {
+
+  printf("Ejectcb2 status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+
+  cdump((unsigned char *)transfer->data_buffer, transfer->actual_num_bytes);
+
+  commandDone();
+}
+
+unsigned char ejectCmd[31] = {
+    0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                            // dCBWSignature
+    0, 0, 0, 1,             // byte 4-7: dCBWTag
+    0, 0, 0, 0,             // byte 8-11: dCBWDataTransferLength
+    0,                      // byte 12: bmCBWFlags
+    0,                      // byte 13: bit 7-4 Reserved(0), bCBWLUN
+    0x06,                   // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+    0x1B, 0, 0, 0,             // byte 15-30: CBWCommandBlock
+    2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+int eject() {
+//  printf("eject ()\n");
+  ejectFlag = 1;
+  usb_host_client_unblock(publicHandle);
+  waitForCommand (10);
+  return 1;  
+}
+
+void ejectCb(usb_transfer_t *transfer) {
+
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+
+  // Perform an IN transfer from EP1
+  dataTransfer->num_bytes = 64;
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = ejectCb2;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("ejectCb submit error %s\n", esp_err_to_name(r));
+}
+
+void startEject(class_driver_t *driver_obj) {
+
+  int r;
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  memcpy(commandTransfer->data_buffer, ejectCmd, 31);
+
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = ejectCb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
+
+  if (r != ESP_OK)
+    printf("startEject submit error %s\n", esp_err_to_name(r));
+}
+
+static void loadCb2(usb_transfer_t *transfer) {
+
+  printf("loadcb2 status %d, actual number of bytes transferred %d\n",
+         transfer->status, transfer->actual_num_bytes);
+
+  cdump((unsigned char *)transfer->data_buffer, transfer->actual_num_bytes);
+
+  commandDone();
+}
+
+unsigned char loadCmd[31] = {
+    0x55, 0x53, 0x42, 0x43, // byte 0-3:
+                            // dCBWSignature
+    0, 0, 0, 1,             // byte 4-7: dCBWTag
+    0, 0, 0, 0,             // byte 8-11: dCBWDataTransferLength
+    0,                      // byte 12: bmCBWFlags
+    0,                      // byte 13: bit 7-4 Reserved(0), bCBWLUN
+    0x06,                   // byte 14: bit 7-5 Reserved(0), bCBWCBLength
+    0x1B, 0, 0, 0,             // byte 15-30: CBWCommandBlock
+    3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+int load() {
+//  printf("eject ()\n");
+  loadFlag = 1;
+  usb_host_client_unblock(publicHandle);
+  waitForCommand (5);
+  return 1;  
+}
+
+void loadCb(usb_transfer_t *transfer) {
+
+  class_driver_t *driver_obj = (class_driver_t *)transfer->context;
+
+  // Perform an IN transfer from EP1
+  dataTransfer->num_bytes = 64;
+  dataTransfer->device_handle = driver_obj->dev_hdl;
+  dataTransfer->bEndpointAddress = 0x81;
+  dataTransfer->callback = loadCb2;
+  dataTransfer->context = (void *)driver_obj;
+  esp_err_t r = usb_host_transfer_submit(dataTransfer);
+
+  if (r != ESP_OK)
+    printf("loadCb submit error %s\n", esp_err_to_name(r));
+}
+
+void startLoad(class_driver_t *driver_obj) {
+
+  int r;
+
+  assert(driver_obj->dev_hdl != NULL);
+
+  memcpy(commandTransfer->data_buffer, loadCmd, 31);
+
+  commandTransfer->num_bytes = 31;
+  commandTransfer->device_handle = driver_obj->dev_hdl;
+  commandTransfer->bEndpointAddress = 0x02;
+  commandTransfer->callback = loadCb;
+  commandTransfer->context = (void *)driver_obj;
+  r = usb_host_transfer_submit(commandTransfer);
+
+  if (r != ESP_OK)
+    printf("startLoad submit error %s\n", esp_err_to_name(r));
+}
+
 
 unsigned char readyCmd[31] = {
     0x55, 0x53, 0x42, 0x43, // byte 0-3:
@@ -734,6 +864,14 @@ void class_driver_task(void *arg) {
     if (readTocFlag) {
      readTocFlag = 0;
       startReadToc(&driver_obj);
+    }
+    if (ejectFlag) {
+     ejectFlag = 0;
+      startEject(&driver_obj);
+    }
+    if (loadFlag) {
+     loadFlag = 0;
+      startLoad(&driver_obj);
     }
     if (requestSenseFlag) {
      requestSenseFlag = 0;

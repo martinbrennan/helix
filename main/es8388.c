@@ -438,6 +438,7 @@ esp_err_t es8388_init(int sampleRate)
 
 	xinit ();
 	printf ("\nxinit used instead of es8388_init code\n\n");
+		
 	return 0;	
 
     res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL3, 0x04);  // 0x04 mute/0x00 unmute&ramp;DAC unmute and  disabled digital volume control soft ramp

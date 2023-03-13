@@ -146,6 +146,14 @@ static void myTask(void *arg)
 					int r = testUnitReady ();					
 					printf ("check result %d\n",r);
 				}
+				else if (strcasecmp(lbuf,"eject") == 0) {
+					int r = eject ();					
+					printf ("eject result %d\n",r);
+				}
+				else if (strcasecmp(lbuf,"load") == 0) {
+					int r = load ();					
+					printf ("load result %d\n",r);
+				}
 				else if (strcasecmp(lbuf,"play") == 0) {					
 					printf ("startPlayingCD ()\n");
 					startPlayingCD (getTrackStart(1));					
@@ -178,6 +186,8 @@ void app_main(void)
     TaskHandle_t daemon_task_hdl;
     TaskHandle_t class_driver_task_hdl;
     TaskHandle_t my_task_hdl;
+
+
     //Create daemon task
     xTaskCreatePinnedToCore(host_lib_daemon_task,
                             "daemon",
@@ -219,4 +229,5 @@ void app_main(void)
     //Delete the tasks
     vTaskDelete(class_driver_task_hdl);
     vTaskDelete(daemon_task_hdl);
+    
 }
