@@ -106,14 +106,17 @@ int16_t audioBuffer[AUDIOBUFFERSIZE];
 
 void testWaveform (){
 
+
+	int frequency = 20;		// multiple of 44100/AUDIOBUFFERSIZE (21.5Hz)
 	double sin_float;
-	int amplitude = 8000;
+	int amplitude = 17000;
 	int16_t *s = audioBuffer;	
 	for (int n=0;n<AUDIOBUFFERSIZE/2;n++){
-        sin_float = amplitude * sin(n * 2 * PI / (AUDIOBUFFERSIZE/2));
+        sin_float = amplitude * sin(frequency * n * 2 * PI / (AUDIOBUFFERSIZE/2));
         int val = sin_float;
+        *s++ = 0;
 		*s++ = val&0xFFFF;
-		*s++ = 0;
+//		*s++ = 0;
 	}
 }		
 
@@ -139,8 +142,8 @@ void *audioThreadCode(void *param) {
 
 	n = smartGetSamplesS (cdAudioBuffer, AUDIOBUFFERSIZE/2, audioBuffer);
 	if (!n) {
-		bzero (audioBuffer,AUDIOBUFFERSIZE*2);
-//		testWaveform ();
+//		bzero (audioBuffer,AUDIOBUFFERSIZE*2);
+		testWaveform ();
 	
 	}
 

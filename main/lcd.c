@@ -15,10 +15,20 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 
+#define HELIXV1 1
+#define ESPOTG 0
+
 
 #define LCD_HOST SPI2_HOST
+
+#if ESPOTG
 #define LCDHEIGHT 240
 #define LCDWIDTH 240
+#endif
+#if HELIXV1
+#define LCDHEIGHT 320
+#define LCDWIDTH 240
+#endif
 #define PARALLEL_LINES 20
 
 #define LCD_BK_LIGHT_OFF_LEVEL 0
@@ -54,8 +64,15 @@ void lcdInit() {
   // Initialize the GPIO of backlight
   ESP_ERROR_CHECK(gpio_config(&bk_gpio_config));
 
-  spi_bus_config_t buscfg = {.sclk_io_num = 6, // SCLK
+  spi_bus_config_t buscfg = {
+#if ESPOTG	  
+							.sclk_io_num = 6, // SCLK
                              .mosi_io_num = 7, // MOSI
+#endif                             
+#if HELIXV1	  
+							.sclk_io_num = 6, // SCLK
+                             .mosi_io_num = 16, // MOSI
+#endif 
                              .miso_io_num = -1,
                              .quadwp_io_num = -1,
                              .quadhd_io_num = -1,
@@ -67,8 +84,14 @@ void lcdInit() {
 
   esp_lcd_panel_io_handle_t io_handle = NULL;
   esp_lcd_panel_io_spi_config_t io_config = {
+#if ESPOTG		  
       .dc_gpio_num = 4, // DC
       .cs_gpio_num = 5, // CS
+#endif      
+#if HELIXV1		  
+      .dc_gpio_num = 4, // DC
+      .cs_gpio_num = 5, // CS
+#endif 
       .pclk_hz = 20000000,
       .lcd_cmd_bits = 8,
       .lcd_param_bits = 8,

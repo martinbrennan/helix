@@ -809,7 +809,7 @@ esp_err_t xes8388_init( es_dac_output_t output, es_adc_input_t input )
 
     res |= es_write_reg(ES8388_ADDR, ES8388_DACPOWER, 0xC0);  //disable DAC and disable Lout/Rout/1/2
     res |= es_write_reg(ES8388_ADDR, ES8388_CONTROL1, 0x12);  //Enfr=0,Play&Record Mode,(0x17-both of mic&paly)
-    res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL1, 0x18);//1a 0x18:16bit iis , 0x00:24
+    res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL1, 0x1A);//1a 0x18:16bit iis , 0x00:24
     res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL2, 0x02);  //DACFsMode,SINGLE SPEED; DACFsRatio,256
     res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL16, 0x00); // 0x00 audio on LIN1&RIN1,  0x09 LIN2&RIN2
     res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL17, 0x90); // only left DAC to left mixer enable 0db
@@ -864,8 +864,11 @@ esp_err_t xes8388_config_i2s( es_bits_length_t bits_length, es_module_t mode, es
         reg = reg & 0xfc;
         res |= es_write_reg(ES8388_ADDR, ES8388_ADCCONTROL4, reg | fmt);
     }
+//    printf ("xes8388_config_i2s hacked - do not touch DACCONTROL1\n");
+    
     if (mode == ES_MODULE_DAC || mode == ES_MODULE_ADC_DAC) {
-        printf( "Setting I2S DAC Format\n");
+		fmt = 1;
+        printf( "Setting I2S DAC Format %d\n",fmt);
         res = es_read_reg(ES8388_DACCONTROL1, &reg);
         reg = reg & 0xf9;
         res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL1, reg | (fmt << 1));
@@ -880,12 +883,17 @@ esp_err_t xes8388_config_i2s( es_bits_length_t bits_length, es_module_t mode, es
         reg = reg & 0xe3;
         res |=  es_write_reg(ES8388_ADDR, ES8388_ADCCONTROL4, reg | (bits << 2));
     }
+    
     if (mode == ES_MODULE_DAC || mode == ES_MODULE_ADC_DAC) {
         ESP_LOGE(ES_TAG, "Setting I2S DAC Bits: %d\n", bits);
         res = es_read_reg(ES8388_DACCONTROL1, &reg);
         reg = reg & 0xc7;
         res |= es_write_reg(ES8388_ADDR, ES8388_DACCONTROL1, reg | (bits << 3));
     }
+
+    es_read_reg(ES8388_DACCONTROL1, &reg);
+    printf ("xes_config_i2s() final value %02x\n",reg);
+            
     return res;
 }
 
