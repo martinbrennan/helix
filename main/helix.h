@@ -1,6 +1,9 @@
 #include <stdint.h>
 
 
+#define HELIXV1 1
+#define ESPOTG 0
+
 #define THREADSTACKSIZE 4096
 
 
@@ -24,6 +27,8 @@ int getTrackCount ();
 unsigned char *getDataAddress ();
 int eject ();
 int load ();
+void usbInit ();
+void waitForUSBToFinish ();
 
 // lcd.c
 

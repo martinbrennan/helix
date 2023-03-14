@@ -15,8 +15,7 @@
 #include "freertos/task.h"
 #include "lvgl.h"
 
-#define HELIXV1 1
-#define ESPOTG 0
+
 
 
 #define LCD_HOST SPI2_HOST
@@ -59,6 +58,7 @@ static void onTimer(void *arg) {
 
 void lcdInit() {
 
+	printf ("lcdinit()\n");
   gpio_config_t bk_gpio_config = {
       .mode = GPIO_MODE_OUTPUT, .pin_bit_mask = 1ULL << 9}; // backlight GPIO 9
   // Initialize the GPIO of backlight
@@ -206,5 +206,7 @@ void lcdInit() {
     label = lv_label_create(btn1);
     lv_label_set_text(label, "Button");
     lv_obj_center(label);
+      
+	printf ("lcdinit() done\n");      
       
 }
