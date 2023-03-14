@@ -150,6 +150,11 @@ static void myTask(void *arg)
 					int r = eject ();					
 					printf ("eject result %d\n",r);
 				}
+				else if (strcasecmp(lbuf,"discid") == 0) {
+					char buf[64];
+					printf ("\n");
+					computeDiscid (buf);
+				}									
 				else if (strcasecmp(lbuf,"load") == 0) {
 					int r = load ();					
 					printf ("load result %d\n",r);

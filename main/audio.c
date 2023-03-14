@@ -250,7 +250,6 @@ void constWaveform (){
 //void *audioThreadCode(void *param) {
 void audioThreadCode(void *param) {
 
-	int n;
 	int16_t *s = audioBuffer;
 	
 	testWaveform ();

@@ -62,3 +62,9 @@ void smartPutSamplesW (smartControl *sc, int frames, s16 *source);
 // i2c_bus.c
 
 void delay (int ms);
+
+// musicbrainz.c
+
+void computeDiscid (char *buf);
+
+
